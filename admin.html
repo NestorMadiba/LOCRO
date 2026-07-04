@@ -6,6 +6,7 @@
     <title>Panel de Control - Validación de Ventas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen font-sans">
 
@@ -14,7 +15,7 @@
             <h2 class="text-xl font-bold text-slate-800 text-center mb-2">Área Administrativa</h2>
             <p class="text-slate-500 text-sm text-center mb-4">Ingresa la clave del curso para auditar los comprobantes bancarios.</p>
             <input type="password" id="claveAdmin" class="w-full border border-slate-300 rounded-xl px-4 py-3 text-center text-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 tracking-widest" placeholder="••••••••">
-            <button onclick="verificarAccAccess()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all">
+            <button onclick="verificarAcceso()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all">
                 Ingresar al Panel
             </button>
             <p id="errorClave" class="hidden text-rose-600 text-xs font-medium text-center mt-2">Contraseña incorrecta. Intenta nuevamente.</p>
@@ -28,23 +29,31 @@
                 <h1 class="text-3xl font-bold text-slate-800">Control de Ventas de Locro</h1>
                 <p class="text-slate-500 text-sm">Cruza las transferencias con el banco o verifica los pagos en efectivo.</p>
             </div>
-            <button onclick="cerrarSesion()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2 rounded-xl transition-all">
-                Cerrar Sesión
-            </button>
+            <div class="flex flex-wrap gap-2 self-start md:self-auto">
+                <button onclick="exportarAExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5">
+                    📊 Exportar a Excel
+                </button>
+                <button onclick="cerrarSesion()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all">
+                    Cerrar Sesión
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
             <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
-                <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Porciones Solicitadas</span>
-                <div id="metricTotal" class="text-3xl font-black text-slate-800 mt-1">0</div>
+                <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Solicitado (Proyectado)</span>
+                <div id="metricTotal" class="text-3xl font-black text-slate-800 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-slate-500 mt-1">Monto Total: <span id="montoTotal" class="text-slate-700">$0</span></div>
             </div>
             <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
-                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider">Porciones Aprobadas (OK)</span>
-                <div id="metricAprobado" class="text-3xl font-black text-emerald-700 mt-1">0</div>
+                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider">Porciones Aprobadas (En Banco)</span>
+                <div id="metricAprobado" class="text-3xl font-black text-emerald-700 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-emerald-600 mt-1">Total Recaudado: <span id="montoAprobado" class="text-emerald-800">$0</span></div>
             </div>
             <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-amber-500">
                 <span class="text-amber-600 text-xs font-bold uppercase tracking-wider">Porciones Pendientes</span>
-                <div id="metricPendiente" class="text-3xl font-black text-amber-700 mt-1">0</div>
+                <div id="metricPendiente" class="text-3xl font-black text-amber-700 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-amber-600 mt-1">Monto Pendiente: <span id="montoPendiente" class="text-amber-800">$0</span></div>
             </div>
         </div>
 
@@ -54,18 +63,20 @@
                     <thead>
                         <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs font-bold uppercase tracking-wider">
                             <th class="p-4">Alumno Vendedor</th>
-                            <th class="p-4">Cant.</th>
+                            <th class="p-4 text-center">Cant.</th>
+                            <th class="p-4">Importe</th>
                             <th class="p-4">Persona que Retira</th>
                             <th class="p-4">Forma Pago</th>
                             <th class="p-4 text-center">Comprobante</th>
-                            <th class="p-4">Observaciones</th>
+                            <th class="p-4">Notas Alumno</th>
+                            <th class="p-4">Obs. Administrador</th>
                             <th class="p-4">Estado</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tablaVentasBody" class="divide-y divide-slate-100 text-slate-700 text-sm">
                         <tr>
-                            <td colspan="8" class="p-8 text-center text-slate-400">Cargando registros...</td>
+                            <td colspan="10" class="p-8 text-center text-slate-400">Cargando registros...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -80,7 +91,7 @@
                 <button onclick="cerrarModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
             </div>
             <div class="p-4 overflow-y-auto flex justify-center bg-slate-900">
-                <img id="imgModal" src="" alt="Comprobante Bancario" class="max-w-full h-auto rounded-lg shadow-md">
+                <img id="imgModal" src="" alt="Comprobante" class="max-w-full h-auto rounded-lg shadow-md">
             </div>
             <div class="p-4 bg-slate-50 border-t border-slate-100 text-right">
                 <button onclick="cerrarModal()" class="bg-slate-600 hover:bg-slate-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all">
@@ -96,13 +107,16 @@
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjZ3JvaXplY3B4YXlqeXd1cXd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTgwMDEsImV4cCI6MjA5ODY5NDAwMX0.tvr_7-J-zbIoSxXKircl5I_X0jKYyS4PBgEU9TBYpGQ";
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // Variable global para almacenar las ventas descargadas y poder exportarlas
+        let ventasCargadasGlobal = [];
+
         if (sessionStorage.getItem('autenticadoLocro') === 'true') {
             document.getElementById('loginOverlay').classList.add('hidden');
             document.getElementById('panelContenido').classList.remove('hidden');
             cargarVentas();
         }
 
-        function verificarAccAccess() {
+        function verificarAcceso() {
             const claveInput = document.getElementById('claveAdmin').value;
             if (claveInput === CLAVE_ACCESO_REQUERIDA) {
                 sessionStorage.setItem('autenticadoLocro', 'true');
@@ -128,32 +142,42 @@
 
                 if (error) throw error;
 
+                // Almacenar en la variable global para exportaciones
+                ventasCargadasGlobal = ventas;
+
                 const tbody = document.getElementById('tablaVentasBody');
                 tbody.innerHTML = '';
 
-                let totalPlatos = 0;
-                let aprobadosPlatos = 0;
-                let pendientesPlatos = 0;
+                let totalPlatos = 0, aprobadosPlatos = 0, pendientesPlatos = 0;
+                let dineroTotal = 0, dineroAprobado = 0, dineroPendiente = 0;
 
                 if (ventas.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400">No se registran ventas cargadas.</td></tr>`;
-                    actualizarMetricas(0, 0, 0);
+                    tbody.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400">No se registran ventas cargadas.</td></tr>`;
+                    actualizarContadores(0, 0, 0, 0, 0, 0);
                     return;
                 }
 
                 ventas.forEach(venta => {
+                    const montoFila = parseFloat(venta.importe) || 0;
+                    
                     totalPlatos += venta.cantidad;
-                    if (venta.estado === 'Aprobado') aprobadosPlatos += venta.cantidad;
-                    if (venta.estado === 'Pendiente') pendientesPlatos += venta.cantidad;
+                    dineroTotal += montoFila;
+
+                    if (venta.estado === 'Aprobado') {
+                        aprobadosPlatos += venta.cantidad;
+                        dineroAprobado += montoFila;
+                    }
+                    if (venta.estado === 'Pendiente') {
+                        pendientesPlatos += venta.cantidad;
+                        dineroPendiente += montoFila;
+                    }
 
                     let badgeColor = "bg-amber-100 text-amber-800";
                     if (venta.estado === 'Aprobado') badgeColor = "bg-emerald-100 text-emerald-800";
                     if (venta.estado === 'Rechazado') badgeColor = "bg-rose-100 text-rose-800";
 
-                    // Estilo dinámico para el tipo de pago
                     let pagoStyle = venta.tipo_pago === 'Efectivo' ? 'text-teal-700 font-medium' : 'text-purple-700 font-medium';
 
-                    // Celda de comprobante condicional
                     let celdaComprobante = `<span class="text-slate-400 text-xs">Sin archivo</span>`;
                     if (venta.comprobante_url) {
                         celdaComprobante = `
@@ -167,10 +191,16 @@
                     fila.innerHTML = `
                         <td class="p-4 font-semibold text-slate-800">${venta.alumno}</td>
                         <td class="p-4 font-bold text-center">${venta.cantidad}</td>
+                        <td class="p-4 font-medium text-slate-900">$${montoFila.toLocaleString('es-AR')}</td>
                         <td class="p-4 text-slate-600">${venta.persona_retira}</td>
                         <td class="p-4 ${pagoStyle}">${venta.tipo_pago}</td>
                         <td class="p-4 text-center">${celdaComprobante}</td>
                         <td class="p-4 text-slate-500 italic max-w-xs truncate" title="${venta.observaciones || ''}">${venta.observaciones || '-'}</td>
+                        
+                        <td class="p-4">
+                            <input type="text" id="obs_admin_${venta.id}" value="${venta.observaciones_admin || ''}" placeholder="Ej: Recibido en cuenta" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all">
+                        </td>
+
                         <td class="p-4">
                             <span class="px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor}">
                                 ${venta.estado}
@@ -188,31 +218,71 @@
                     tbody.appendChild(fila);
                 });
 
-                actualizarMetricas(totalPlatos, aprobadosPlatos, pendientesPlatos);
+                actualizarContadores(totalPlatos, aprobadosPlatos, pendientesPlatos, dineroTotal, dineroAprobado, dineroPendiente);
 
             } catch (error) {
                 console.error("Error:", error);
             }
         }
 
-        function actualizarMetricas(total, aprobados, pendientes) {
-            document.getElementById('metricTotal').innerText = total;
-            document.getElementById('metricAprobado').innerText = aprobados;
-            document.getElementById('metricPendiente').innerText = pendientes;
+        function actualizarContadores(pTotal, pAprob, pPend, dTotal, dAprob, dPend) {
+            document.getElementById('metricTotal').innerText = `${pTotal} Porciones`;
+            document.getElementById('metricAprobado').innerText = `${pAprob} Porciones`;
+            document.getElementById('metricPendiente').innerText = `${pPend} Porciones`;
+
+            document.getElementById('montoTotal').innerText = `$${dTotal.toLocaleString('es-AR')}`;
+            document.getElementById('montoAprobado').innerText = `$${dAprob.toLocaleString('es-AR')}`;
+            document.getElementById('montoPendiente').innerText = `$${dPend.toLocaleString('es-AR')}`;
         }
 
+        // MODIFICACIÓN 2: Guarda el estado actualizado junto con el texto ingresado en las observaciones
         async function cambiarEstado(id, nuevoEstado) {
+            const campoTextoAdmin = document.getElementById(`obs_admin_${id}`).value;
             try {
                 const { error } = await supabaseClient
                     .from('ventas_locro')
-                    .update({ estado: nuevoEstado })
+                    .update({ 
+                        estado: nuevoEstado,
+                        observaciones_admin: campoTextoAdmin
+                    })
                     .eq('id', id);
 
                 if (error) throw error;
                 cargarVentas(); 
             } catch (error) {
-                alert("Error al actualizar el registro.");
+                alert("Error al actualizar el registro de control.");
             }
+        }
+
+        // MODIFICACIÓN 3: Función de descarga automatizada en formato Excel real (.xlsx)
+        function exportarAExcel() {
+            if (ventasCargadasGlobal.length === 0) {
+                alert("No existen registros cargados para realizar la exportación.");
+                return;
+            }
+
+            // Estructura limpia y en español para las columnas del Excel
+            const filasFormateadas = ventasCargadasGlobal.map(item => ({
+                "Fecha de Registro": new Date(item.created_at).toLocaleString('es-AR'),
+                "Alumno Vendedor": item.alumno,
+                "Cantidad de Platos": item.cantidad,
+                "Importe Recaudado ($)": item.importe || 0,
+                "Persona que Retira": item.persona_retira,
+                "Forma de Pago": item.tipo_pago,
+                "Estado Auditoría": item.estado,
+                "Notas del Alumno": item.observaciones || '',
+                "Observaciones del Administrador": item.observaciones_admin || '',
+                "Dirección del Comprobante": item.comprobante_url || 'Sin archivo'
+            }));
+
+            // Construcción del libro Excel nativo mediante la librería
+            const libroTrabajo = XLSX.utils.book_new();
+            const hojaDatos = XLSX.utils.json_to_sheet(filasFormateadas);
+
+            XLSX.utils.book_append_sheet(libroTrabajo, hojaDatos, "Control General de Ventas");
+
+            // Desencadena la descarga del archivo en la computadora o celular
+            XLSX.writeFile(libroTrabajo, "Planilla_Ventas_Locro_Curso.xlsx");
         }
 
         function abrirComprobante(url) {
