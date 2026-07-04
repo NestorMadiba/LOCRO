@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Validación de Ventas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+
+    <div id="loginOverlay" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-800 text-center mb-2">Área Administrativa</h2>
+            <p class="text-slate-500 text-sm text-center mb-4">Ingresa la clave del curso para auditar los comprobantes bancarios.</p>
+            <input type="password" id="claveAdmin" class="w-full border border-slate-300 rounded-xl px-4 py-3 text-center text-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 tracking-widest" placeholder="••••••••">
+            <button onclick="verificarAccAccess()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all">
+                Ingresar al Panel
+            </button>
+            <p id="errorClave" class="hidden text-rose-600 text-xs font-medium text-center mt-2">Contraseña incorrecta. Intenta nuevamente.</p>
+        </div>
+    </div>
+
+    <div id="panelContenido" class="hidden max-w-7xl mx-auto px-4 py-6">
+        
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-800">Control de Ventas de Locro</h1>
+                <p class="text-slate-500 text-sm">Cruza las transferencias con el banco o verifica los pagos en efectivo.</p>
+            </div>
+            <button onclick="cerrarSesion()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2 rounded-xl transition-all">
+                Cerrar Sesión
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Porciones Solicitadas</span>
+                <div id="metricTotal" class="text-3xl font-black text-slate-800 mt-1">0</div>
+            </div>
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
+                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider">Porciones Aprobadas (OK)</span>
+                <div id="metricAprobado" class="text-3xl font-black text-emerald-700 mt-1">0</div>
+            </div>
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-amber-500">
+                <span class="text-amber-600 text-xs font-bold uppercase tracking-wider">Porciones Pendientes</span>
+                <div id="metricPendiente" class="text-3xl font-black text-amber-700 mt-1">0</div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                            <th class="p-4">Alumno Vendedor</th>
+                            <th class="p-4">Cant.</th>
+                            <th class="p-4">Persona que Retira</th>
+                            <th class="p-4">Forma Pago</th>
+                            <th class="p-4 text-center">Comprobante</th>
+                            <th class="p-4">Observaciones</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaVentasBody" class="divide-y divide-slate-100 text-slate-700 text-sm">
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-slate-400">Cargando registros...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalComprobante" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-slate-800">Visualización de Comprobante</h3>
+                <button onclick="cerrarModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex justify-center bg-slate-900">
+                <img id="imgModal" src="" alt="Comprobante Bancario" class="max-w-full h-auto rounded-lg shadow-md">
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 text-right">
+                <button onclick="cerrarModal()" class="bg-slate-600 hover:bg-slate-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CLAVE_ACCESO_REQUERIDA = "LocroCurso2026"; 
+        const SUPABASE_URL = "TU_SUPABASE_URL_AQUÍ";
+        const SUPABASE_ANON_KEY = "TU_SUPABASE_ANON_KEY_AQUÍ";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        if (sessionStorage.getItem('autenticadoLocro') === 'true') {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('panelContenido').classList.remove('hidden');
+            cargarVentas();
+        }
+
+        function verificarAccAccess() {
+            const claveInput = document.getElementById('claveAdmin').value;
+            if (claveInput === CLAVE_ACCESO_REQUERIDA) {
+                sessionStorage.setItem('autenticadoLocro', 'true');
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('panelContenido').classList.remove('hidden');
+                cargarVentas();
+            } else {
+                document.getElementById('errorClave').classList.remove('hidden');
+            }
+        }
+
+        function cerrarSesion() {
+            sessionStorage.removeItem('autenticadoLocro');
+            window.location.reload();
+        }
+
+        async function cargarVentas() {
+            try {
+                const { data: ventas, error } = await supabaseClient
+                    .from('ventas_locro')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const tbody = document.getElementById('tablaVentasBody');
+                tbody.innerHTML = '';
+
+                let totalPlatos = 0;
+                let aprobadosPlatos = 0;
+                let pendientesPlatos = 0;
+
+                if (ventas.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400">No se registran ventas cargadas.</td></tr>`;
+                    actualizarMetricas(0, 0, 0);
+                    return;
+                }
+
+                ventas.forEach(venta => {
+                    totalPlatos += venta.cantidad;
+                    if (venta.estado === 'Aprobado') aprobadosPlatos += venta.cantidad;
+                    if (venta.estado === 'Pendiente') pendientesPlatos += venta.cantidad;
+
+                    let badgeColor = "bg-amber-100 text-amber-800";
+                    if (venta.estado === 'Aprobado') badgeColor = "bg-emerald-100 text-emerald-800";
+                    if (venta.estado === 'Rechazado') badgeColor = "bg-rose-100 text-rose-800";
+
+                    // Estilo dinámico para el tipo de pago
+                    let pagoStyle = venta.tipo_pago === 'Efectivo' ? 'text-teal-700 font-medium' : 'text-purple-700 font-medium';
+
+                    // Celda de comprobante condicional
+                    let celdaComprobante = `<span class="text-slate-400 text-xs">Sin archivo</span>`;
+                    if (venta.comprobante_url) {
+                        celdaComprobante = `
+                            <button onclick="abrirComprobante('${venta.comprobante_url}')" class="text-blue-600 hover:text-blue-800 font-semibold underline text-xs">
+                                Ver Imagen
+                            </button>`;
+                    }
+
+                    const fila = document.createElement('tr');
+                    fila.className = "hover:bg-slate-50 transition-colors";
+                    fila.innerHTML = `
+                        <td class="p-4 font-semibold text-slate-800">${venta.alumno}</td>
+                        <td class="p-4 font-bold text-center">${venta.cantidad}</td>
+                        <td class="p-4 text-slate-600">${venta.persona_retira}</td>
+                        <td class="p-4 ${pagoStyle}">${venta.tipo_pago}</td>
+                        <td class="p-4 text-center">${celdaComprobante}</td>
+                        <td class="p-4 text-slate-500 italic max-w-xs truncate" title="${venta.observaciones || ''}">${venta.observaciones || '-'}</td>
+                        <td class="p-4">
+                            <span class="px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor}">
+                                ${venta.estado}
+                            </span>
+                        </td>
+                        <td class="p-4 text-right space-x-1 whitespace-nowrap">
+                            <button onclick="cambiarEstado('${venta.id}', 'Aprobado')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all shadow-sm">
+                                OK
+                            </button>
+                            <button onclick="cambiarEstado('${venta.id}', 'Rechazado')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-all">
+                                Rechazar
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(fila);
+                });
+
+                actualizarMetricas(totalPlatos, aprobadosPlatos, pendientesPlatos);
+
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        function actualizarMetricas(total, aprobados, pendientes) {
+            document.getElementById('metricTotal').innerText = total;
+            document.getElementById('metricAprobado').innerText = aprobados;
+            document.getElementById('metricPendiente').innerText = pendientes;
+        }
+
+        async function cambiarEstado(id, nuevoEstado) {
+            try {
+                const { error } = await supabaseClient
+                    .from('ventas_locro')
+                    .update({ estado: nuevoEstado })
+                    .eq('id', id);
+
+                if (error) throw error;
+                cargarVentas(); 
+            } catch (error) {
+                alert("Error al actualizar el registro.");
+            }
+        }
+
+        function abrirComprobante(url) {
+            document.getElementById('imgModal').src = url;
+            document.getElementById('modalComprobante').classList.remove('hidden');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalComprobante').classList.add('hidden');
+            document.getElementById('imgModal').src = '';
+        }
+    </script>
+</body>
+</html>
