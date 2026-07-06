@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Validación de Ventas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+
+    <div id="loginOverlay" class="fixed inset-0 bg-slate-900 bg-opacity-95 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-800 text-center mb-2">Área Administrativa</h2>
+            <p class="text-slate-500 text-sm text-center mb-4">Ingresa la clave del curso para auditar los comprobantes bancarios.</p>
+            <input type="password" id="claveAdmin" class="w-full border border-slate-300 rounded-xl px-4 py-3 text-center text-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 tracking-widest" placeholder="••••••••">
+            <button onclick="verificarAcceso()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all">
+                Ingresar al Panel
+            </button>
+            <p id="errorClave" class="hidden text-rose-600 text-xs font-medium text-center mt-2">Contraseña incorrecta. Intenta nuevamente.</p>
+        </div>
+    </div>
+
+    <div id="panelContenido" class="hidden max-w-7xl mx-auto px-4 py-6">
+        
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-800">Control de Ventas de Locro</h1>
+                <p class="text-slate-500 text-sm">Cruza las transferencias con el banco o verifica los pagos en efectivo.</p>
+            </div>
+            <div class="flex flex-wrap gap-2 self-start md:self-auto">
+                <button onclick="exportarAExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5">
+                    📊 Exportar a Excel
+                </button>
+                <button onclick="cerrarSesion()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all">
+                    Cerrar Sesión
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Solicitado (Proyectado)</span>
+                <div id="metricTotal" class="text-3xl font-black text-slate-800 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-slate-500 mt-1">Monto Total: <span id="montoTotal" class="text-slate-700">$0</span></div>
+            </div>
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
+                <span class="text-emerald-600 text-xs font-bold uppercase tracking-wider">Porciones Aprobadas (En Banco)</span>
+                <div id="metricAprobado" class="text-3xl font-black text-emerald-700 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-emerald-600 mt-1">Total Recaudado: <span id="montoAprobado" class="text-emerald-800">$0</span></div>
+            </div>
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm border-l-4 border-l-amber-500">
+                <span class="text-amber-600 text-xs font-bold uppercase tracking-wider">Porciones Pendientes</span>
+                <div id="metricPendiente" class="text-3xl font-black text-amber-700 mt-1">0 Porciones</div>
+                <div class="text-sm font-semibold text-amber-600 mt-1">Monto Pendiente: <span id="montoPendiente" class="text-amber-800">$0</span></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3 w-full md:max-w-md">
+                <label for="filtroAlumno" class="text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Filtrar Alumno:</label>
+                <select id="filtroAlumno" onchange="filtrarPorAlumno()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                    <option value="TODOS">-- Ver todos los alumnos --</option>
+                    <option value="Trinidad María Torino Llambí">Trinidad María Torino Llambí</option>
+                    <option value="Sofía TOMÁS RUIZ">Sofía TOMÁS RUIZ</option>
+                    <option value="Joaquín Jerónimo Alarcón Poma">Joaquín Jerónimo Alarcón Poma</option>
+                    <option value="Elisea Maria Sola">Elisea Maria Sola</option>
+                    <option value="ERNESTINA BELLO">ERNESTINA BELLO</option>
+                    <option value="JOSEFINA VARELA DELGADO">JOSEFINA VARELA DELGADO</option>
+                    <option value="Ana Maria Petersen Zavaleta">Ana Maria Petersen Zavaleta</option>
+                    <option value="VICTORIA GARCÍA BES">VICTORIA GARCÍA BES</option>
+                    <option value="Lourdes Victoria Martos">Lourdes Victoria Martos</option>
+                    <option value="Farah Ayejes">Farah Ayejes</option>
+                    <option value="Roque Rueda Massé">Roque Rueda Massé</option>
+                    <option value="María del Milagro Nieva Moreno">María del Milagro Nieva Moreno</option>
+                    <option value="Sofía Torino">Sofía Torino</option>
+                    <option value="Mia Kai Hua SANCHEZ LO">Mia Kai Hua SANCHEZ LO</option>
+                    <option value="Felicitas Schwarz Saravia">Felicitas Schwarz Saravia</option>
+                    <option value="Salcedo Santiago Ismael">Salcedo Santiago Ismael</option>
+                    <option value="María Lujan Delgado Aguirre">María Lujan Delgado Aguirre</option>
+                    <option value="María del Milagro Raimondo">María del Milagro Raimondo</option>
+                    <option value="Fausto Aguilera Gaida">Fausto Aguilera Gaida</option>
+                    <option value="Casabella Dousset, Joaquin">Casabella Dousset, Joaquin</option>
+                    <option value="Rico Ignacio Jose">Rico Ignacio Jose</option>
+                    <option value="Jaime Tuya">Jaime Tuya</option>
+                    <option value="Felipe Zamorano">Felipe Zamorano</option>
+                    <option value="Isaías Conrado Padilla Estrada">Isaías Conrado Padilla Estrada</option>
+                    <option value="Sol Morena Ghiberti Ovando">Sol Morena Ghiberti Ovando</option>
+                    <option value="Agustín Guiñazu">Agustín Guiñazu</option>
+                    <option value="Carlos José Figueroa Sylvester">Carlos José Figueroa Sylvester</option>
+                    <option value="Tobias Santillan Correa">Tobias Santillan Correa</option>
+                    <option value="Matias Carrazana Figueroa">Matias Carrazana Figueroa</option>
+                    <option value="Martin Tomas Castañeda">Martin Tomas Castañeda</option>
+                    <option value="RENATA RUEDA PECCI">RENATA RUEDA PECCI</option>
+                    <option value="SANCHEZ RIZZOTTI, LUZ MARIA">SANCHEZ RIZZOTTI, LUZ MARIA</option>
+                    <option value="SOFIA CHIHADEH">SOFIA CHIHADEH</option>
+                    <option value="Agustín Valentino Ross">Agustín Valentino Ross</option>
+                </select>
+            </div>
+            <div id="resultadoFiltro" class="hidden w-full md:w-auto text-sm bg-blue-50 border border-blue-100 px-5 py-3 rounded-xl flex flex-col sm:flex-row gap-2 sm:gap-6 items-start sm:items-center">
+                <span class="font-bold text-blue-800">Resumen del Alumno:</span>
+                <div class="text-slate-700">Platos vendidos: <span id="totalPlatosAlumno" class="font-black text-blue-700 text-base">0</span></div>
+                <div class="text-slate-700">Monto total rendido: <span id="totalDineroAlumno" class="font-black text-emerald-700 text-base">$0</span></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs font-bold uppercase tracking-wider">
+                            <th class="p-4">Alumno Vendedor</th>
+                            <th class="p-4 text-center">Cant.</th>
+                            <th class="p-4">Importe</th>
+                            <th class="p-4">Persona que Retira</th>
+                            <th class="p-4">Forma Pago</th>
+                            <th class="p-4 text-center">Comprobante</th>
+                            <th class="p-4">Notas Alumno</th>
+                            <th class="p-4">Obs. Administrador</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaVentasBody" class="divide-y divide-slate-100 text-slate-700 text-sm">
+                        <tr>
+                            <td colspan="10" class="p-8 text-center text-slate-400">Cargando registros...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalComprobante" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-slate-800">Visualización de Comprobante</h3>
+                <button onclick="cerrarModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex justify-center bg-slate-900">
+                <img id="imgModal" src="" alt="Comprobante" class="max-w-full h-auto rounded-lg shadow-md">
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 text-right">
+                <button onclick="cerrarModal()" class="bg-slate-600 hover:bg-slate-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CLAVE_ACCESO_REQUERIDA = "LocroCurso2026"; 
+        const SUPABASE_URL = "TU_SUPABASE_URL_AQUÍ";
+        const SUPABASE_ANON_KEY = "TU_SUPABASE_ANON_KEY_AQUÍ";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let ventasCargadasGlobal = [];
+
+        if (sessionStorage.getItem('autenticadoLocro') === 'true') {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('panelContenido').classList.remove('hidden');
+            cargarVentas();
+        }
+
+        function verificarAcceso() {
+            const claveInput = document.getElementById('claveAdmin').value;
+            if (claveInput === CLAVE_ACCESO_REQUERIDA) {
+                sessionStorage.setItem('autenticadoLocro', 'true');
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('panelContenido').classList.remove('hidden');
+                cargarVentas();
+            } else {
+                document.getElementById('errorClave').classList.remove('hidden');
+            }
+        }
+
+        function cerrarSesion() {
+            sessionStorage.removeItem('autenticadoLocro');
+            window.location.reload();
+        }
+
+        async function cargarVentas() {
+            try {
+                const { data: ventas, error } = await supabaseClient
+                    .from('ventas_locro')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                ventasCargadasGlobal = ventas;
+
+                let totalPlatos = 0, aprobadosPlatos = 0, pendientesPlatos = 0;
+                let dineroTotal = 0, dineroAprobado = 0, dineroPendiente = 0;
+
+                ventas.forEach(venta => {
+                    const montoFila = parseFloat(venta.importe) || 0;
+                    totalPlatos += venta.cantidad;
+                    dineroTotal += montoFila;
+
+                    if (venta.estado === 'Aprobado') {
+                        aprobadosPlatos += venta.cantidad;
+                        dineroAprobado += montoFila;
+                    }
+                    if (venta.estado === 'Pendiente') {
+                        pendientesPlatos += venta.cantidad;
+                        dineroPendiente += montoFila;
+                    }
+                });
+
+                actualizarContadores(totalPlatos, aprobadosPlatos, pendientesPlatos, dineroTotal, dineroAprobado, dineroPendiente);
+                
+                // Ejecuta el filtro dinámico para armar la tabla
+                filtrarPorAlumno();
+
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        function actualizarContadores(pTotal, pAprob, pPend, dTotal, dAprob, dPend) {
+            document.getElementById('metricTotal').innerText = `${pTotal} Porciones`;
+            document.getElementById('metricAprobado').innerText = `${pAprob} Porciones`;
+            document.getElementById('metricPendiente').innerText = `${pPend} Porciones`;
+
+            document.getElementById('montoTotal').innerText = `$${dTotal.toLocaleString('es-AR')}`;
+            document.getElementById('montoAprobado').innerText = `$${dAprob.toLocaleString('es-AR')}`;
+            document.getElementById('montoPendiente').innerText = `$${dPend.toLocaleString('es-AR')}`;
+        }
+
+        // NUEVO: Función encargada de filtrar las filas y totalizar las porciones compradas/vendidas por alumno
+        function filtrarPorAlumno() {
+            const alumnoSeleccionado = document.getElementById('filtroAlumno').value;
+            const tbody = document.getElementById('tablaVentasBody');
+            const resultadoFiltro = document.getElementById('resultadoFiltro');
+            
+            tbody.innerHTML = '';
+            let ventasFiltradas = ventasCargadasGlobal;
+
+            if (alumnoSeleccionado !== "TODOS") {
+                // Filtrar el array global
+                ventasFiltradas = ventasCargadasGlobal.filter(v => v.alumno === alumnoSeleccionado);
+                
+                // Totalizar platos e importe del alumno seleccionado
+                let platosAlumno = 0;
+                let dineroAlumno = 0;
+                ventasFiltradas.forEach(v => {
+                    platosAlumno += v.cantidad;
+                    dineroAlumno += parseFloat(v.importe) || 0;
+                });
+
+                document.getElementById('totalPlatosAlumno').innerText = platosAlumno;
+                document.getElementById('totalDineroAlumno').innerText = `$${dineroAlumno.toLocaleString('es-AR')}`;
+                resultadoFiltro.classList.remove('hidden');
+            } else {
+                resultadoFiltro.classList.add('hidden');
+            }
+
+            if (ventasFiltradas.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400">No se registran ventas para el alumno seleccionado.</td></tr>`;
+                return;
+            }
+
+            ventasFiltradas.forEach(venta => {
+                const montoFila = parseFloat(venta.importe) || 0;
+                let badgeColor = "bg-amber-100 text-amber-800";
+                if (venta.estado === 'Aprobado') badgeColor = "bg-emerald-100 text-emerald-800";
+                if (venta.estado === 'Rechazado') badgeColor = "bg-rose-100 text-rose-800";
+
+                let pagoStyle = venta.tipo_pago === 'Efectivo' ? 'text-teal-700 font-medium' : 'text-purple-700 font-medium';
+
+                let celdaComprobante = `<span class="text-slate-400 text-xs">Sin archivo</span>`;
+                if (venta.comprobante_url) {
+                    celdaComprobante = `
+                        <button onclick="abrirComprobante('${venta.comprobante_url}')" class="text-blue-600 hover:text-blue-800 font-semibold underline text-xs">
+                            Ver Imagen
+                        </button>`;
+                }
+
+                const fila = document.createElement('tr');
+                fila.className = "hover:bg-slate-50 transition-colors";
+                fila.innerHTML = `
+                    <td class="p-4 font-semibold text-slate-800">${venta.alumno}</td>
+                    <td class="p-4 font-bold text-center">${venta.cantidad}</td>
+                    <td class="p-4 font-medium text-slate-900">$${montoFila.toLocaleString('es-AR')}</td>
+                    <td class="p-4 text-slate-600">${venta.persona_retira}</td>
+                    <td class="p-4 ${pagoStyle}">${venta.tipo_pago}</td>
+                    <td class="p-4 text-center">${celdaComprobante}</td>
+                    <td class="p-4 text-slate-500 italic max-w-xs truncate" title="${venta.observaciones || ''}">${venta.observaciones || '-'}</td>
+                    <td class="p-4">
+                        <input type="text" id="obs_admin_${venta.id}" value="${venta.observaciones_admin || ''}" placeholder="Ej: Recibido en cuenta" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all">
+                    </td>
+                    <td class="p-4">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor}">
+                            ${venta.estado}
+                        </span>
+                    </td>
+                    <td class="p-4 text-right space-x-1 whitespace-nowrap">
+                        <button onclick="cambiarEstado('${venta.id}', 'Aprobado')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all shadow-sm">
+                            OK
+                        </button>
+                        <button onclick="cambiarEstado('${venta.id}', 'Rechazado')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-all">
+                            Rechazar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(fila);
+            });
+        }
+
+        async function cambiarEstado(id, nuevoEstado) {
+            const campoTextoAdmin = document.getElementById(`obs_admin_${id}`).value;
+            try {
+                const { error } = await supabaseClient
+                    .from('ventas_locro')
+                    .update({ 
+                        estado: nuevoEstado,
+                        observaciones_admin: campoTextoAdmin
+                    })
+                    .eq('id', id);
+
+                if (error) throw error;
+                cargarVentas(); 
+            } catch (error) {
+                alert("Error al actualizar el registro de control.");
+            }
+        }
+
+        function exportarAExcel() {
+            if (ventasCargadasGlobal.length === 0) {
+                alert("No existen registros cargados para realizar la exportación.");
+                return;
+            }
+
+            const filasFormateadas = ventasCargadasGlobal.map(item => ({
+                "Fecha de Registro": new Date(item.created_at).toLocaleString('es-AR'),
+                "Alumno Vendedor": item.alumno,
+                "Cantidad de Platos": item.cantidad,
+                "Importe Recaudado ($)": item.importe || 0,
+                "Persona que Retira": item.persona_retira,
+                "Forma de Pago": item.tipo_pago,
+                "Estado Auditoría": item.estado,
+                "Notas del Alumno": item.observaciones || '',
+                "Observaciones del Administrador": item.observaciones_admin || '',
+                "Dirección del Comprobante": item.comprobante_url || 'Sin archivo'
+            }));
+
+            const libroTrabajo = XLSX.utils.book_new();
+            const hojaDatos = XLSX.utils.json_to_sheet(filasFormateadas);
+            XLSX.utils.book_append_sheet(libroTrabajo, hojaDatos, "Control General de Ventas");
+            XLSX.writeFile(libroTrabajo, "Planilla_Ventas_Locro_Curso.xlsx");
+        }
+
+        function abrirComprobante(url) {
+            document.getElementById('imgModal').src = url;
+            document.getElementById('modalComprobante').classList.remove('hidden');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalComprobante').classList.add('hidden');
+            document.getElementById('imgModal').src = '';
+        }
+    </script>
+</body>
+</html>
